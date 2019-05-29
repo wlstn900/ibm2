@@ -2,64 +2,96 @@ package main
 
 import (
 	"fmt"
+	"testing"
 
 	"github.com/hyperledger/fabric/core/chaincode/shim"
-	"github.com/hyperledger/fabric/protos/peer"
 )
 
-type User struct {
-	userId   string
-	userName string
-}
-
-type SmartContract struct {
-}
-
-func (t *SmartContract) Init(stub shim.ChaincodeStubInterface) peer.Response {
-	return shim.Success(nil)
-}
-
-func (t *SmartContract) Invoke(stub shim.ChaincodeStubInterface) peer.Response {
-	function, args := stub.GetFunctionAndParameters()
-
-	if function == "Create" {
-		return t.Create(stub, args)
+func checkInit(t *testing.T, stub *shim.MockStub, args [][]byte) {
+	res := stub.MockInit("1", args)
+	if res.Status != shim.OK {
+		fmt.Println("초기화 중 오류가 발생했습니다")
+		fmt.Println("\n======================error message=======================")
+		fmt.Println(string(res.Message))
+		fmt.Println("======================================================")
+		t.FailNow()
 	}
-
-	if function == "Read" {
-		return t.Read(stub, args)
-	}
-
-	return shim.Success(nil)
-
 }
 
-func (t *SmartContract) Create(stub shim.ChaincodeStubInterface, args []string) peer.Response {
-
-	err := stub.PutState(args[0], []byte(args[1]))
-
-	if err != nil {
-		return shim.Error(err.Error())
+func checkState(t *testing.T, stub *shim.MockStub, key string, expectedValue string) {
+	bytes, _ := stub.GetState(key)
+	if bytes == nil {
+		fmt.Println("현재 StateDB에 저장된 값이 없습니다")
+		t.FailNow()
 	}
-
-	return shim.Success(nil)
+	if string(bytes) != expectedValue {
+		fmt.Println("\n======================error message======================")
+		fmt.Println("[key]")
+		fmt.Println(string(key))
+		fmt.Println("\n[current state]")
+		fmt.Println(string(bytes))
+		fmt.Println("\n[expected current state]")
+		fmt.Println(expectedValue)
+		fmt.Println("======================================================")
+		t.FailNow()
+	}
 }
 
-func (t *SmartContract) Read(stub shim.ChaincodeStubInterface, args []string) peer.Response {
+func checkQuery(t *testing.T, stub *shim.MockStub, args [][]byte) {
+	res := stub.MockInvoke("1", args)
 
-	value, err := stub.GetState(args[0])
-
-	if err != nil {
-		return shim.Error(err.Error())
+	if res.Status != shim.OK {
+		fmt.Println("Invoke", args, "failed", string(res.Message))
+		t.FailNow()
+	} else {
+		fmt.Println("======================================================")
+		fmt.Println(string(res.Payload))
+		fmt.Println("======================================================")
 	}
-
-	return shim.Success(value)
 }
 
-func main() {
-	err := shim.Start(new(SmartContract))
-
-	if err != nil {
-		fmt.Printf("Error starting SmartContract: %s", err)
+func checkInvoke(t *testing.T, stub *shim.MockStub, args [][]byte) {
+	res := stub.MockInvoke("1", args)
+	if res.Status != shim.OK {
+		fmt.Println("Invoke", args, "failed", string(res.Message))
+		t.FailNow()
 	}
+}
+
+func TestInit(t *testing.T) {
+	SmartContract := new(SmartContract)
+	stub := shim.NewMockStub("SmartContract", SmartContract)
+	checkInit(t, stub, [][]byte{[]byte("init")})
+}
+
+// ===========================================================
+//   TestInvoke_Case1: CreateUser Test
+// ===========================================================
+func TestInvoke_Case1(t *testing.T) {
+	SmartContract := new(SmartContract)
+	stub := shim.NewMockStub("SmartContract", SmartContract)
+
+	checkInit(t, stub, [][]byte{[]byte("init")})
+	checkInvoke(t, stub, [][]byte{[]byte("Create"),
+		[]byte("user01"),
+		[]byte("홍길동")})
+	checkState(t, stub, "user01", "홍길")
+}
+
+// ===========================================================
+//   TestInvoke_Case2: CreateUser Test
+// ===========================================================
+func TestInvoke_Case2(t *testing.T) {
+	SmartContract := new(SmartContract)
+	stub := shim.NewMockStub("SmartContract", SmartContract)
+
+	checkInit(t, stub, [][]byte{[]byte("init")})
+	checkInvoke(t, stub, [][]byte{[]byte("Create"),
+		[]byte("user01"),
+		[]byte("홍길동")})
+	checkInvoke(t, stub, [][]byte{[]byte("Create"),
+		[]byte("user02"),
+		[]byte("유관순")})
+	checkState(t, stub, "user01", "홍길동")
+	checkState(t, stub, "user02", "유관순")
 }
